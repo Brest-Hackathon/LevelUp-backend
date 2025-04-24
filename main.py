@@ -53,6 +53,7 @@ def verify_api_key(api_key: str = Header(..., description="Base64 encoded API ke
 
 @app.post("/register")
 async def register(login: str, password: str):
+    """User registration endpoint"""
     user = get_user(login)
     if user:
         raise HTTPException(status_code=400, detail="Login already exists")
@@ -63,13 +64,14 @@ async def register(login: str, password: str):
         "login": login,
         "password": hashed_pw,
         "statistics": '{"achievements": [], "courses": []}',
-        "account_info": '{"level": 0, "decorations": null, "points": 0, "premium": null, "days": 0, "restart_streak": 3, "leaderboard": false}'
+        "account_info": '{"level": 0, "decorations": null, "points": 0, "premium": null, "days": 0, "restart_streak": 3, "leaderboard": false, "picture": null, "status": null}'
     })
     
     return {"message": "Registration successful"}
 
 @app.post("/login")
 async def login(login: str, password: str):
+    """Login endpoint with session management"""
     user = get_user(login)
     if not user or not verify_password(password, user.get("password", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -160,43 +162,9 @@ async def get_account_info(
         "account_info": json.loads(user["account_info"])
     }
 
-
-@app.post("/register")
-async def register(login: str, password: str):
-    """User registration endpoint [[7]]"""
-    user = get_user(login)
-    if user:
-        raise HTTPException(status_code=400, detail="Login already exists")
-    
-    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    
-    print(xata.records().insert("users", {"login": login,"password": hashed_pw, "statistics": '{"achievements": [], "courses": []}', "account_info": '{"level": 0, "decorations": null, "points": 0, "premium": null, "days": 0, "restart_streak": 3, "leaderboard": false}'}))
-    
-    return {"message": "Registration successful"}
-
-@app.post("/login")
-async def login(login: str, password: str):
-    """Login endpoint with session management [[9]]"""
-    user = get_user(login)
-    if not user or not verify_password(password, user.get("password", "")):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    session_id = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(days=30)
-    cursor.execute("""
-        INSERT INTO sessions (session_id, user_id, expires_at)
-        VALUES (?, ?, ?)
-    """, (session_id, user["id"], expires_at))
-    conn.commit()
-    return {
-        "session_key": session_id,
-        "expires_in": 30*24*3600,
-        "user_id": user["id"]
-    }
-
 @app.get("/verify")
 async def verify_session(session_key: str = Depends(oauth2_scheme)):
-    """Session verification endpoint [[7]]"""
+    """Session verification endpoint"""
     cursor.execute("""
         SELECT * FROM sessions 
         WHERE session_id = ? AND expires_at > ?
@@ -210,14 +178,14 @@ async def verify_session(session_key: str = Depends(oauth2_scheme)):
 
 @app.post("/logout")
 async def logout(session_key: str = Depends(oauth2_scheme)):
-    """Session termination endpoint [[9]]"""
+    """Session termination endpoint"""
     cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_key,))
     conn.commit()
     return {"message": "Logout successful"}
 
 @app.get("/leaderboard")
 async def leaderboard(session_key: str = Depends(oauth2_scheme)):
-    """Get user leaderboard sorted by points [[7]][[9]]"""
+    """Get user leaderboard sorted by points"""
     cursor.execute("""
         SELECT * FROM sessions 
         WHERE session_id = ? AND expires_at > ?
