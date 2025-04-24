@@ -7,6 +7,7 @@ import bcrypt
 from xata.client import XataClient
 from dotenv import load_dotenv
 import os
+import json
 
 load_dotenv()
 
@@ -51,7 +52,7 @@ async def register(login: str, password: str):
     
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     
-    print(xata.records().insert("users", {"login": login,"password": hashed_pw}))
+    print(xata.records().insert("users", {"login": login,"password": hashed_pw, "statistics": '{"achievements": [], "courses": []}', "account_info": '{"level": 0, "decorations": null, "points": 0}'}))
     
     return {"message": "Registration successful"}
 
@@ -96,6 +97,44 @@ async def logout(session_key: str = Depends(oauth2_scheme)):
     cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_key,))
     conn.commit()
     return {"message": "Logout successful"}
+
+@app.get("/leaderboard")
+async def leaderboard(session_key: str = Depends(oauth2_scheme)):
+    """Get user leaderboard sorted by points [[7]][[9]]"""
+    cursor.execute("""
+        SELECT * FROM sessions 
+        WHERE session_id = ? AND expires_at > ?
+    """, (session_key, datetime.utcnow()))
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    try:
+        result = xata.data().query("users")
+        users = result.get("records", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed")
+    
+    leaderboard = []
+    for user in users:
+        try:
+            account_info = user.get("account_info", [])
+            account_info = json.loads(account_info)
+            points = account_info.get("points", 0)
+            leaderboard.append({
+                "rank": 0,
+                "user_id": user["id"],
+                "login": user["login"],
+                "points": points
+            })
+        except (KeyError, json.JSONDecodeError):
+            continue
+    
+    leaderboard.sort(key=lambda x: x["points"], reverse=True)
+    for idx, entry in enumerate(leaderboard, 1):
+        entry["rank"] = idx
+    
+    return {"leaderboard": leaderboard}
 
 if __name__ == "__main__":
     import uvicorn
