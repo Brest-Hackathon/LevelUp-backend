@@ -16,4 +16,7 @@ curl -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/verify
 
 # Logout
 curl -X POST -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/logout
+
+# Leaderboard
+curl -X GET -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/leaderboard
 ```
