@@ -2,7 +2,7 @@
 
 API for LevelUP - service for effective education
 
-## Callback
+## API Callbacks
 
 ```
 # Register new user
