@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import os
 import json
 import base64
+import uvicorn
 
 load_dotenv()
 
@@ -230,6 +231,60 @@ async def leaderboard(
     
     return {"leaderboard": leaderboard}
 
+@app.get("/flashcards/database")
+async def get_flashcards(session_key: str = Depends(oauth2_scheme)):
+    """Retrieve flashcards with ID and name from JSON data"""
+    cursor.execute("""
+        SELECT user_id FROM sessions 
+        WHERE session_id = ? AND expires_at > ?
+    """, (session_key, datetime.utcnow()))
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    try:
+        result = xata.data().query("flash_cards")
+        flashcards = result.get("records", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed")
+    
+    formatted = []
+    for fc in flashcards:
+        name = fc.get("title", {})
+        formatted.append({
+            "id": fc["id"],
+            "name": name
+        })
+    
+    return formatted
+
+
+@app.get("/flashcards/{flashcard_id}")
+async def get_flashcard_by_id(
+    flashcard_id: str, 
+    session_key: str = Depends(oauth2_scheme)
+):
+    """Retrieve specific flashcard with title and content by ID"""
+    cursor.execute("""
+        SELECT user_id FROM sessions 
+        WHERE session_id = ? AND expires_at > ?
+    """, (session_key, datetime.utcnow()))
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    try:
+        flashcard = xata.records().get("flash_cards", flashcard_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Flashcard not found")
+    
+    if not flashcard:
+        raise HTTPException(status_code=404, detail="Flashcard not found")
+    
+    return {
+        "id": flashcard["id"],
+        "content": flashcard.get("flash_card",{})
+    }
+
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
