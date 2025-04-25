@@ -15,7 +15,8 @@ curl -X POST "http://localhost:8000/login?login=test&password=123456"
 curl -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/verify
 
 # Leaderboard (replace SESSION_KEY)
-curl -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/leaderboard
+curl -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/leaderboard?filter=rank
+curl -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/leaderboard?filter=days
 
 # Logout
 curl -X POST -H "Authorization: Bearer SESSION_KEY" http://localhost:8000/logout

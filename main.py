@@ -184,8 +184,11 @@ async def logout(session_key: str = Depends(oauth2_scheme)):
     return {"message": "Logout successful"}
 
 @app.get("/leaderboard")
-async def leaderboard(session_key: str = Depends(oauth2_scheme)):
-    """Get user leaderboard sorted by points"""
+async def leaderboard(
+    filter: str = "rank",
+    session_key: str = Depends(oauth2_scheme)
+):
+    """Get user leaderboard filtered by rank (points) or days"""
     cursor.execute("""
         SELECT * FROM sessions 
         WHERE session_id = ? AND expires_at > ?
@@ -193,6 +196,9 @@ async def leaderboard(session_key: str = Depends(oauth2_scheme)):
     session = cursor.fetchone()
     if not session:
         raise HTTPException(status_code=401, detail="Invalid session")
+    
+    if filter not in {"rank", "days"}:
+        raise HTTPException(status_code=400, detail="Invalid filter. Use 'rank' or 'days'")
     
     try:
         result = xata.data().query("users")
@@ -203,19 +209,22 @@ async def leaderboard(session_key: str = Depends(oauth2_scheme)):
     leaderboard = []
     for user in users:
         try:
-            account_info = user.get("account_info", [])
-            account_info = json.loads(account_info)
+            account_info = json.loads(user.get("account_info", "{}"))
             points = account_info.get("points", 0)
+            days = account_info.get("days", 0)
+            
             leaderboard.append({
-                "rank": 0,
                 "user_id": user["id"],
                 "login": user["login"],
-                "points": points
+                "points": points,
+                "days": days
             })
-        except (KeyError, json.JSONDecodeError):
+        except (json.JSONDecodeError, KeyError):
             continue
+
+    sort_key = "points" if filter == "rank" else "days"
+    leaderboard.sort(key=lambda x: x[sort_key], reverse=True)
     
-    leaderboard.sort(key=lambda x: x["points"], reverse=True)
     for idx, entry in enumerate(leaderboard, 1):
         entry["rank"] = idx
     
