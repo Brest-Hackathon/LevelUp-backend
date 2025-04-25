@@ -10,6 +10,9 @@ import os
 import json
 import base64
 import uvicorn
+from typing import List
+from moodtest import generate_mood_test, analyze_mood
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -18,6 +21,10 @@ XATA_DB_URL = os.getenv("XATA_DB_URL")
 API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
 app = FastAPI()
+
+class Answer(BaseModel):
+    question: str
+    chosen_option: str
 
 xata = XataClient(api_key=XATA_API_KEY, db_url=XATA_DB_URL)
 
@@ -65,7 +72,7 @@ async def register(login: str, password: str):
         "login": login,
         "password": hashed_pw,
         "statistics": '{"achievements": [], "courses": []}',
-        "account_info": '{"level": 0, "decorations": null, "points": 0, "premium": null, "days": 0, "restart_streak": 3, "leaderboard": false, "picture": null, "status": null}'
+        "account_info": '{"level": 0, "decorations": null, "points": 0, "premium": null, "days": 0, "restart_streak": 3, "leaderboard": false, "picture": null, "status": null, "mood_status": null}'
     })
     
     return {"message": "Registration successful"}
@@ -285,6 +292,46 @@ async def get_flashcard_by_id(
         "id": flashcard["id"],
         "content": flashcard.get("flash_card",{})
     }
+@app.get("/mood/test")
+async def mood_test_gen(session_key: str = Depends(oauth2_scheme)):
+    """Generate a new mood test"""
+    cursor.execute("""
+        SELECT user_id FROM sessions 
+        WHERE session_id = ? AND expires_at > ?
+    """, (session_key, datetime.utcnow()))
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    test = generate_mood_test()
+    if not test:
+        raise HTTPException(status_code=500, detail="Failed to generate mood test")
+    return test
+
+@app.post("/mood/test")
+async def mood_test_analyse(
+    answers: List[Answer],
+    session_key: str = Depends(oauth2_scheme)
+):
+    """Analyze mood test answers and update user's mood status"""
+    cursor.execute("""
+        SELECT user_id FROM sessions 
+        WHERE session_id = ? AND expires_at > ?
+    """, (session_key, datetime.utcnow()))
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    user_id = session[0]
+
+    answers_list = [{"question": ans.question, "chosen_option": ans.chosen_option} for ans in answers]
+    mood_score = analyze_mood(answers_list) 
+
+    user = xata.records().get("users", user_id)
+    current_info = json.loads(user["account_info"])
+    current_info["mood_status"] = mood_score
+
+    xata.records().update("users", user_id, {"account_info": json.dumps(current_info)})
+
+    return {"mood_score": mood_score, "status": "Mood status updated successfully"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
